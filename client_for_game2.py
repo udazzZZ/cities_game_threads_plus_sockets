@@ -41,7 +41,7 @@ class Client:
 
 
 def main():
-    client = Client('127.0.0.1', port=49537)
+    client = Client('127.0.0.1', port=3434)
     client.connect()
 
 

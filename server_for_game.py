@@ -33,15 +33,15 @@ class GameServer:
             name = client_socket.recv(1024).decode('UTF-8')
             self.names.append(name)
 
-            unconnected = True
-            while unconnected:
+            not_in_room = True
+            while not_in_room:
                 free_rooms_count = []
 
                 for room_number in self.rooms.keys():
                     if self.rooms[room_number]['free']:
                         free_rooms_count.append(room_number)
 
-                client_socket.send(('Выберите комнату или создайте новую (new)\n'
+                client_socket.send(('Выберите существующую комнату или создайте новую через команду new\n'
                                     'Доступные комнаты: ' + ', '.join(free_rooms_count)).encode('UTF-8'))
                 room = client_socket.recv(1024).decode('UTF-8').strip()
 
@@ -55,7 +55,7 @@ class GameServer:
                     self.threads[client_socket] = thread
                     thread.start()
 
-                    unconnected = False
+                    not_in_room = False
                 elif room == 'new':
                     self.current_rooms_count += 1
                     lock = Lock()
@@ -73,7 +73,7 @@ class GameServer:
                     self.threads[client_socket] = thread
                     thread.start()
 
-                    unconnected = False
+                    not_in_room = False
                 else:
                     client_socket.send('Комната не существует или уже занята.'.encode('UTF-8'))
 
@@ -86,17 +86,21 @@ class GameServer:
         else:
             second_player = self.rooms[room]['clients'][0]
 
+        first_player.send("Список доступных команд: exit, ...".encode('UTF-8'))
+
+        self.rooms[room]['running'] = True
         while self.is_server_active and len(self.rooms[room]['clients']) == 2:
-            self.rooms[room]['running'] = True
             while self.rooms[room]['running']:
                 if turn:
-                    timer = Timer(10.0, self.end_game, (first_player, second_player, room))
+                    timer = Timer(10.0, self.end_game, (first_player, second_player, room, False))
                     timer.start()
 
                     first_player.send("Введите город: ".encode())
                     city = first_player.recv(1024).decode('UTF-8').strip()
 
                     if city == 'exit':
+                        # self.end_game(first_player, second_player, room, True)
+                        # continue
                         first_player.close()
                         break
 
@@ -110,8 +114,8 @@ class GameServer:
                         continue
 
                     self.rooms[room]['used_words'].append(city)
-                    turn = not turn
                     second_player.send(f"{self.names[self.users.index(first_player)]}: {city}".encode('UTF-8'))
+                    turn = not turn
                     with condition:
                         condition.notify()
                     timer.cancel()
@@ -121,17 +125,31 @@ class GameServer:
                         condition.wait()
                     turn = not turn
 
-    def end_game(self, loser, winner, room):
+    def end_game(self, loser, winner, room, flag):
+        # self.rooms[room]['running'] = False
+        # if flag:
+        #     self.exit(loser)
+        #     winner.send("Вы выиграли! Игра окончена.".encode('UTF-8'))
+        #     time.sleep(1)
+        #     self.change(winner)
+        # else:
+        #     loser.send("Вы не успели ввести город и проиграли. Игра окончена.".encode('UTF-8'))
+        #     winner.send("Вы выиграли! Игра окончена.".encode('UTF-8'))
+        #     time.sleep(1)
+
         self.rooms[room]['running'] = False
-        loser.send("Вы не успели ввести город и проиграли. Игра окончена.".encode('UTF-8'))
-        winner.send("Вы выиграли! Игра окончена.".encode('UTF-8'))
+        winner.send("Вы выиграли! Игра окончена. Введите команду exit для выхода.".encode('UTF-8'))
+        loser.send("Вы не успели ввести город и проиграли. Игра окончена. Введите команду exit для выхода.".encode('UTF-8'))
         time.sleep(1)
         self.rooms[room]['clients'].pop(self.rooms[room]['clients'].index(loser))
         self.rooms[room]['clients'].pop(self.rooms[room]['clients'].index(winner))
 
+    def exit(self):
+        pass
+
 
 def main():
-    game_server = GameServer('127.0.0.1', port=49537)
+    game_server = GameServer('127.0.0.1', port=3434)
     game_server.launch()
 
 
