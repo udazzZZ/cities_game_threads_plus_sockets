@@ -1,6 +1,6 @@
 import socket
 import threading
-
+import pickle
 
 class Client:
     def __init__(self, host, port):
@@ -8,12 +8,13 @@ class Client:
         self.port = port
         self.sock = None
         self.isConnected = False
+        self.lock = threading.Lock()
 
     def connect(self):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.connect((self.host, self.port))
         name = input("Введите ваше имя: ")
-        self.sock.send(name.encode())
+        self.sock.send(pickle.dumps(name))
         self.isConnected = True
         thread_send = threading.Thread(target=self.send_messages)
         thread_recv = threading.Thread(target=self.receive_messages)
@@ -21,21 +22,30 @@ class Client:
         thread_recv.start()
 
     def send_messages(self):
-        while self.isConnected:
-            message = input()
-            self.sock.send(message.encode())
-            if message.lower() == 'exit':
-                print("Отключение от сервера...")
-                self.sock.close()
-                break
+        try:
+            while self.isConnected:
+                message = input()
+                self.sock.send(pickle.dumps(message))
+                if message.lower() == 'exit':
+                    print("Отключение от сервера...")
+                    self.isConnected = False
+                    self.sock.close()
+                    break
+        except (ConnectionResetError, ConnectionAbortedError):
+            print("Вы были отключены от сервера")
 
     def receive_messages(self):
         try:
             while self.isConnected:
-                data = self.sock.recv(1024)
-                print(data.decode())
-                if not data:
+                received_data = self.sock.recv(4096)
+                if not received_data:
                     break
+                data = pickle.loads(received_data)
+                if type(data) == type(dict):
+                    if 'exit' in data.keys() and data['exit']:
+                        self.isConnected = False
+                        self.sock.close()
+                print(data)
         except (ConnectionResetError, ConnectionAbortedError):
             print("Вы были отключены от сервера")
 
