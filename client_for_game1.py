@@ -31,8 +31,8 @@ class Client:
                     self.isConnected = False
                     self.sock.close()
                     break
-        except (ConnectionResetError, ConnectionAbortedError):
-            print("Вы были отключены от сервера")
+        except (ConnectionError, OSError):
+            print("Вы были отключены от сервера.")
 
     def receive_messages(self):
         try:
@@ -41,17 +41,18 @@ class Client:
                 if not received_data:
                     break
                 data = pickle.loads(received_data)
-                if type(data) == type(dict):
+                if isinstance(data, dict):
                     if 'exit' in data.keys() and data['exit']:
                         self.isConnected = False
                         self.sock.close()
+                        break
                 print(data)
-        except (ConnectionResetError, ConnectionAbortedError):
-            print("Вы были отключены от сервера")
+        except (ConnectionError, OSError):
+            print("Вы были отключены от сервера.")
 
 
 def main():
-    client = Client('127.0.0.1', port=3434)
+    client = Client('127.0.0.1', port=3453)
     client.connect()
 
 
