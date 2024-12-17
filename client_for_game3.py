@@ -16,10 +16,8 @@ class Client:
         name = input("Введите ваше имя: ")
         self.sock.send(pickle.dumps(name))
         self.isConnected = True
-        thread_send = threading.Thread(target=self.send_messages)
-        thread_recv = threading.Thread(target=self.receive_messages)
-        thread_send.start()
-        thread_recv.start()
+        threading.Thread(target=self.send_messages).start()
+        threading.Thread(target=self.receive_messages).start()
 
     def send_messages(self):
         try:
@@ -52,7 +50,7 @@ class Client:
 
 
 def main():
-    client = Client('127.0.0.1', port=3453)
+    client = Client('127.0.0.1', port=3455)
     client.connect()
 
 

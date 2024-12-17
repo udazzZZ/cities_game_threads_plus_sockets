@@ -69,19 +69,18 @@ class GameServer:
         print(f"{first_player_name} disconnected")
         Thread(target=self.change, args=(second_player, second_player_name)).start()
 
-    def ban(self, room, first_player, first_player_name, second_player):
+    def ban(self, room, first_player, second_player):
         second_player.send(pickle.dumps("Вы были забанены."))
         key_exit = {'exit': True}
         second_player.send(pickle.dumps(key_exit))
         second_player_idx = self.rooms[room].clients.index(second_player)
         self.rooms[room].clients.pop(second_player_idx)
         self.rooms[room].clients_names.pop(second_player_idx)
-        print(len(self.rooms[room].clients))
         second_player_sock_idx = self.users.index(second_player)
         self.users.pop(second_player_sock_idx)
         second_player.close()
-        self.rooms[room].running = False
         self.rooms[room].used_words = []
+        self.rooms[room].is_free = True
         Thread(target=self.start_game, args=(room, first_player, True)).start()
 
     def change(self, client_socket, name):
@@ -94,7 +93,6 @@ class GameServer:
                                                 f'Выберите существующую комнату или создайте новую через команду new.'))
             except ConnectionError:
                 print(f"Клиент {name} внезапно разорвал соединение.")
-                not_in_room = False
                 client_sock_idx = self.users.index(client_socket)
                 self.users.pop(client_sock_idx)
                 break
@@ -108,6 +106,7 @@ class GameServer:
                 client_socket.send(pickle.dumps(f"Вы подключились к комнате {room}"))
                 cur_room_idx = free_rooms_count.index(room)
                 free_rooms_count.pop(cur_room_idx)
+                self.rooms[room].is_free = False
 
                 self.start_game(room, client_socket, False)
 
@@ -131,7 +130,6 @@ class GameServer:
                     client_socket.send(pickle.dumps("Комната не существует или уже занята."))
                 except ConnectionError:
                     print(f"Клиент {name} внезапно разорвал соединение.")
-                    not_in_room = False
                     client_sock_idx = self.users.index(client_socket)
                     self.users.pop(client_sock_idx)
                     break
@@ -159,17 +157,16 @@ class GameServer:
             print(second_player_name)
             second_player.send(pickle.dumps("Игра началась. Вы ходите первым."))
 
-        self.rooms[room].running = True
-        while self.rooms[room].running:
-            print('Игра идет')
+        while True:
+            print('Игра идет.')
             if turn:
+                print('игрок здесь')
                 start_timer = time.time()
-                first_player.send(pickle.dumps("ты ходишь"))
+                first_player.send(pickle.dumps("Ты ходишь."))
 
                 try:
                     received_city = first_player.recv(1024)
                     city = pickle.loads(received_city)
-                    print(city)
                 except (ConnectionError, OSError):
                     print(f"Клиент внезапно разорвал соединение.")
                     del self.rooms[room]
@@ -178,18 +175,24 @@ class GameServer:
 
                 if city == 'exit':
                     self.exit(room, first_player, first_player_name, second_player, second_player_name)
+                    with self.rooms[room].game_condition:
+                        self.rooms[room].game_condition.notify_all()
                     break
 
                 if city == 'change':
+                    self.rooms[room].running = False
+                    with self.rooms[room].game_condition:
+                        self.rooms[room].game_condition.notify_all()
                     del self.rooms[room]
                     Thread(target=self.change, args=(first_player, first_player_name)).start()
                     Thread(target=self.change, args=(second_player, second_player_name)).start()
                     break
 
                 if city == 'ban':
-                    print(threading.active_count())
                     if first_player in self.rooms[room].admins:
-                        self.ban(room, first_player, first_player_name, second_player)
+                        self.ban(room, first_player, second_player)
+                        with self.rooms[room].game_condition:
+                            self.rooms[room].game_condition.notify_all()
                         break
                     else:
                         first_player.send(pickle.dumps("Вы не можете забанить игрока, "
@@ -222,10 +225,10 @@ class GameServer:
 
             else:
                 with self.rooms[room].game_condition:
-                    first_player.send(pickle.dumps("жди очереди"))
+                    first_player.send(pickle.dumps("Ожидай своей очереди."))
                     self.rooms[room].game_condition.wait()
                     try:
-                        first_player.send(pickle.dumps("теперь твоя очередь"))
+                        first_player.send(pickle.dumps("Теперь твоя очередь."))
                     except OSError:
                         break
                 turn = not turn
@@ -241,7 +244,7 @@ class GameServer:
 
 
 def main():
-    game_server = GameServer('127.0.0.1', port=3453)
+    game_server = GameServer('127.0.0.1', port=3455)
     game_server.launch()
 
 
