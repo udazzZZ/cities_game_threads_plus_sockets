@@ -3,7 +3,7 @@ import threading
 import pickle
 from PyQt6.QtCore import pyqtSignal, QObject
 from PyQt6.QtWidgets import QApplication, QMainWindow
-from gui_for_client_pages import Ui_MainWindow
+from gui_for_game import Ui_MainWindow
 import socket
 
 
@@ -58,47 +58,48 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.stackedWidget.setCurrentIndex(0)
 
         self.client.message_received.connect(self.display_message)
-        self.lineEdit.editingFinished.connect(self.send_name)
-        self.lineEdit_2.editingFinished.connect(self.send_room)
-        self.lineEdit_3.editingFinished.connect(self.send_chat_message)
+        self.input_0.editingFinished.connect(self.send_name)
+        self.input_1.editingFinished.connect(self.send_room)
+        self.input_2.editingFinished.connect(self.send_chat_message)
 
-        self.pushButton.clicked.connect(self.send_name)
-        self.pushButton_2.clicked.connect(self.send_room)
-        self.pushButton_3.clicked.connect(self.create_room)
-        self.pushButton_4.clicked.connect(self.send_chat_message)
-        self.pushButton_5.clicked.connect(self.change_room)
-        self.pushButton_6.clicked.connect(self.exit_app)
-        self.pushButton_7.clicked.connect(self.ban_player)
+        self.send_0.clicked.connect(self.send_name)
+        self.send_1.clicked.connect(self.send_room)
+        self.new_1.clicked.connect(self.create_room)
+        self.send_2.clicked.connect(self.send_chat_message)
+        self.change.clicked.connect(self.change_room)
+        self.exit.clicked.connect(self.exit_app)
+        self.ban.clicked.connect(self.ban_player)
 
     def send_name(self):
-        name = self.lineEdit.text()
+        name = self.input_0.text()
         if name:
             self.client.send_message(name)
-            self.lineEdit.clear()
+            self.setWindowTitle(name)
+            self.input_0.clear()
             self.stackedWidget.setCurrentIndex(1)
 
     def send_room(self):
-        room_name = self.lineEdit_2.text()
+        room_name = self.input_1.text()
         if room_name:
             self.client.send_message(room_name)
-            self.lineEdit_2.clear()
-            self.textEdit_3.clear()
+            self.input_1.clear()
+            self.output_1.clear()
             self.stackedWidget.setCurrentIndex(2)
 
     def create_room(self):
         self.client.send_message("new")
-        room_name = self.lineEdit_2.text()
+        room_name = self.input_1.text()
         if room_name:
             self.client.send_message(room_name)
-            self.lineEdit_2.clear()
-            self.textEdit_3.clear()
+            self.input_1.clear()
+            self.output_1.clear()
             self.stackedWidget.setCurrentIndex(2)
 
     def send_chat_message(self):
-        message = self.lineEdit_3.text()
+        message = self.input_2.text()
         if message:
             self.client.send_message(message)
-            self.lineEdit_3.clear()
+            self.input_2.clear()
 
     def change_room(self):
         self.client.send_message("change")
@@ -113,7 +114,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def display_message(self, message):
         if "new" in message:
-            # self.textEdit_2.clear()
             self.stackedWidget.setCurrentIndex(1)
         elif "Вы были забанены." == message:
             self.close()
@@ -122,11 +122,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         if current_page_index == 0:
             print(message)
-            self.textEdit.append(message)
+            self.output_0.append(message)
         elif current_page_index == 1:
-            self.textEdit_2.append(message)
+            self.output_1.append(message)
         elif current_page_index == 2:
-            self.textEdit_3.append(message)
+            self.output_2.append(message)
+
+    def closeEvent(self, event):
+        self.client.sock.close()
 
 
 def main():
@@ -139,6 +142,7 @@ def main():
 
     main_window = MainWindow(client)
     main_window.show()
+    main_window.setFixedSize(363, 482)
 
     app.exec()
 

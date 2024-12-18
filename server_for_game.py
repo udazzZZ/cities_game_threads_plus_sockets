@@ -46,9 +46,12 @@ class GameServer:
 
     def recv_name(self, client_socket):
         client_socket.send(pickle.dumps("Введите свое имя."))
-        received_name = client_socket.recv(1024)
-        name = pickle.loads(received_name)
-        self.change(client_socket, name)
+        try:
+            received_name = client_socket.recv(1024)
+            name = pickle.loads(received_name)
+            self.change(client_socket, name)
+        except ConnectionError:
+            print("Клиент разорвал соединение.")
 
     def get_free_rooms(self):
         free_rooms = []
