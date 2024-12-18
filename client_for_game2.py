@@ -59,6 +59,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.client.message_received.connect(self.display_message)
         self.input_0.editingFinished.connect(self.send_name)
+        self.input_0.setPlaceholderText("Введите свое имя...")
         self.input_1.editingFinished.connect(self.send_room)
         self.input_2.editingFinished.connect(self.send_chat_message)
 
@@ -130,7 +131,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     def closeEvent(self, event):
         self.client.sock.close()
-
 
 def main():
     app = QApplication(sys.argv)
