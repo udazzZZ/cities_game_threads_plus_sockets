@@ -1,10 +1,10 @@
-import sys
 import threading
 import pickle
 from PyQt6.QtCore import pyqtSignal, QObject
 from PyQt6.QtWidgets import QApplication, QMainWindow
 from gui_for_game import Ui_MainWindow
 import socket
+from queue import Queue
 
 
 class GameClient(QObject):
@@ -15,15 +15,25 @@ class GameClient(QObject):
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.connect((host, port))
         self.isConnected = True
+        self.queue = Queue()
 
     def start(self):
         threading.Thread(target=self.receive_messages).start()
+        threading.Thread(target=self.send_msg).start()
+
+    def send_msg(self):
+        while self.isConnected:
+            try:
+                msg = self.queue.get(block=True)
+                self.sock.send(msg)
+            except (ConnectionError, OSError):
+                print("Вы были отключены от сервера.")
+                self.isConnected = False
+                self.sock.close()
+                break
 
     def send_message(self, message):
-        try:
-            self.sock.send(pickle.dumps(message))
-        except (ConnectionError, OSError):
-            print("Ошибка при отправке сообщения.")
+        self.queue.put(pickle.dumps(message))
 
     def receive_messages(self):
         while self.isConnected:
@@ -133,15 +143,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.client.sock.close()
 
 def main():
-    app = QApplication(sys.argv)
+    app = QApplication([])
 
     host = '127.0.0.1'
     port = 3435
     client = GameClient(host, port)
-    client.start()
 
     main_window = MainWindow(client)
     main_window.show()
+    client.start()
     main_window.setFixedSize(363, 482)
 
     app.exec()

@@ -13,6 +13,27 @@
   <property name="windowTitle">
    <string>MainWindow</string>
   </property>
+  <property name="styleSheet">
+   <string notr="true">#centralwidget {
+	background-color: rgb(63, 129, 158);
+}
+QPushButton {
+	background-color: rgb(255, 253, 253);
+	border-radius: 5px;
+	padding: 10px 10px;
+	color: rgb(55, 107, 113);
+}
+QPushButton:hover {
+	color: rgb(45, 97, 100);
+	border: 1px  solid rgb(55, 107, 113);
+	cursor: pointer;
+}
+QLineEdit {
+	padding: 5px;
+	border-radius:5px;
+	color: rgb(55, 107, 113);
+}</string>
+  </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QGridLayout" name="gridLayout_3">
     <item row="0" column="0">
