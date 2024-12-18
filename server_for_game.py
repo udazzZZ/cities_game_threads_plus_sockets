@@ -42,9 +42,10 @@ class GameServer:
         while self.is_server_active:
             client_socket, client_address = self.socket.accept()
             print(f'Подключен {client_address}')
-            Thread(target=self.recv_name, args=(client_socket,), daemon=True).start()
+            Thread(target=self.recv_name, args=(client_socket,)).start()
 
     def recv_name(self, client_socket):
+        client_socket.send(pickle.dumps("Введите свое имя."))
         received_name = client_socket.recv(1024)
         name = pickle.loads(received_name)
         self.change(client_socket, name)
@@ -135,11 +136,10 @@ class GameServer:
                     break
 
     def start_game(self, cur_room):
-        print(threading.active_count())
-        while cur_room.is_free:
+        if cur_room.is_free:
             for client in cur_room.clients:
                 client.send(pickle.dumps(f"Ожидание соперника..."))
-            time.sleep(3)
+        while cur_room.is_free:
             continue
 
         commands_message = ("Игра началась.\n"
@@ -215,17 +215,17 @@ class GameServer:
 
     def end_game(self, winner, loser, room, winner_name, loser_name):
         winner.send(pickle.dumps("Вы выиграли! Игра окончена. "
-                                 "Вы можете подключиться к новой игре или выйти из игры командой exit."))
+                                 "Вы можете подключиться к новой игре."))
         loser.send(pickle.dumps("Вы не успели ввести город и проиграли. Игра окончена. "
-                                "Вы можете подключиться к новой игре или выйти из игры командой exit."))
-        time.sleep(1)
+                                "Вы можете подключиться к новой игре."))
+        time.sleep(5)
         del self.rooms[room.name]
         Thread(target=self.change, args=(winner, winner_name)).start()
         Thread(target=self.change, args=(loser, loser_name)).start()
 
 
 def main():
-    game_server = GameServer('127.0.0.1', port=3455)
+    game_server = GameServer('127.0.0.1', port=3435)
     game_server.start()
 
 
