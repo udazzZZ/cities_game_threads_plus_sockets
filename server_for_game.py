@@ -6,46 +6,43 @@ import pickle
 
 
 class GameRoom:
-    def __init__(self, free, number):
-        self.is_free = free
-        self.number = number
-        self.clients = []
-        self.used_words = []
-        self.admins = []
-        self.running = False
-        self.clients_names = []
-        self.lock = Lock()
-        self.game_condition = Condition(self.lock)
+    def __init__(self, free, name):
+        self.is_free: bool = free
+        self.name: str = name
+        self.clients: list = []
+        self.used_words: list = []
+        self.admins: list = []
+        self.clients_names: list = []
+        self.lock: Lock = Lock()
+        self.game_condition: Condition = Condition(self.lock)
 
     def get_clients_names(self):
         return ' '.join([i for i in self.clients_names])
 
+    def broadcast(self, except_client, mes):
+        for client in self.clients:
+            if client != except_client:
+                client.send(pickle.dumps(mes))
+
+
 class GameServer:
     def __init__(self, host, port):
-        self.host = host
-        self.port = port
-        self.is_server_active = True
-        self.socket = None
-        self.users = []
-        self.current_rooms_count = 0
-        self.rooms = {}
-
-    def launch(self):
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket.bind((self.host, self.port))
+        self.socket.bind((host, port))
         self.socket.listen(5)
+        self.is_server_active: bool = True
+        self.current_rooms_count: int = 0
+        self.rooms: dict = {}
+        self.TIMER: int = 15
+        self.lock: Lock = Lock()
+        self.banned_players: list = []
+
+    def start(self):
         print("Ожидание подключения игроков...")
-
-        accept_thread = Thread(target=self.accept_incoming_connections)
-        accept_thread.start()
-        accept_thread.join()
-
-    def accept_incoming_connections(self):
         while self.is_server_active:
             client_socket, client_address = self.socket.accept()
             print(f'Подключен {client_address}')
-            self.users.append(client_socket)
-            Thread(target=self.recv_name, args=(client_socket, ), daemon=True).start()
+            Thread(target=self.recv_name, args=(client_socket,), daemon=True).start()
 
     def recv_name(self, client_socket):
         received_name = client_socket.recv(1024)
@@ -57,31 +54,28 @@ class GameServer:
         mes = '\n'
         for keys, room in self.rooms.items():
             if room.is_free:
-                free_rooms.append(str(room.number))
-                mes += f'Комната номер: {room.number}, клиенты: {room.get_clients_names()}\n'
+                free_rooms.append(room.name)
+                mes += f'Комната: {room.name}, клиенты: {room.get_clients_names()}\n'
         return free_rooms, mes
 
-    def exit(self, room, first_player, first_player_name, second_player, second_player_name):
-        del self.rooms[room]
-        first_player_sock_idx = self.users.index(first_player)
-        self.users.pop(first_player_sock_idx)
-        first_player.close()
-        print(f"{first_player_name} disconnected")
-        Thread(target=self.change, args=(second_player, second_player_name)).start()
+    def exit(self, room, player, opponent, name, opponent_name):
+        room.broadcast(player, f"Игрок {name} покинул игру. "
+                               f"Вы будете перенаправлены в меню смены комнаты.")
+        print(f"{name} disconnected")
+        del self.rooms[room.name]
+        Thread(target=self.change, args=(opponent, opponent_name)).start()
 
-    def ban(self, room, first_player, second_player):
-        second_player.send(pickle.dumps("Вы были забанены."))
+    def ban(self, room, opponent, opponent_name):
+        self.banned_players.append(opponent_name)
+        opponent.send(pickle.dumps("Вы были забанены."))
         key_exit = {'exit': True}
-        second_player.send(pickle.dumps(key_exit))
-        second_player_idx = self.rooms[room].clients.index(second_player)
-        self.rooms[room].clients.pop(second_player_idx)
-        self.rooms[room].clients_names.pop(second_player_idx)
-        second_player_sock_idx = self.users.index(second_player)
-        self.users.pop(second_player_sock_idx)
-        second_player.close()
-        self.rooms[room].used_words = []
-        self.rooms[room].is_free = True
-        Thread(target=self.start_game, args=(room, first_player, True)).start()
+        opponent.send(pickle.dumps(key_exit))
+        opponent_idx = room.clients.index(opponent)
+        room.clients.pop(opponent_idx)
+        room.clients_names.pop(opponent_idx)
+        room.used_words = []
+        room.is_free = True
+        Thread(target=self.start_game, args=(room, )).start()
 
     def change(self, client_socket, name):
         not_in_room = True
@@ -93,159 +87,146 @@ class GameServer:
                                                 f'Выберите существующую комнату или создайте новую через команду new.'))
             except ConnectionError:
                 print(f"Клиент {name} внезапно разорвал соединение.")
-                client_sock_idx = self.users.index(client_socket)
-                self.users.pop(client_sock_idx)
                 break
 
             received_room = client_socket.recv(1024)
             room = pickle.loads(received_room).strip()
 
-            if room in free_rooms_count and not (len(self.rooms[room].clients) == 2):
-                self.rooms[room].clients.append(client_socket)
-                self.rooms[room].clients_names.append(name)
-                client_socket.send(pickle.dumps(f"Вы подключились к комнате {room}"))
-                cur_room_idx = free_rooms_count.index(room)
-                free_rooms_count.pop(cur_room_idx)
-                self.rooms[room].is_free = False
+            if room in free_rooms_count and self.rooms[room].is_free:
+                if name in self.banned_players:
+                    client_socket.send(pickle.dumps("Вы были забанены на этом сервере, "
+                                                    "поэтому не можете подключаться к существующим комнатам."))
+                    continue
 
-                self.start_game(room, client_socket, False)
+                with self.lock:
+                    cur_room = self.rooms[room]
+                    cur_room.clients.append(client_socket)
+                    cur_room.clients_names.append(name)
+                    client_socket.send(pickle.dumps(f"Вы подключились к комнате {room}"))
+                    cur_room_idx = free_rooms_count.index(room)
+                    free_rooms_count.pop(cur_room_idx)
+                    cur_room.is_free = False
 
                 not_in_room = False
+
             elif room == 'new':
+                client_socket.send(pickle.dumps(f"Введите название комнаты: "))
+                new_room_name = pickle.loads(client_socket.recv(1024))
                 self.current_rooms_count += 1
-                client_socket.send(pickle.dumps(f"Вы создали комнату {self.current_rooms_count}"))
+                client_socket.send(pickle.dumps(f"Вы создали комнату {new_room_name}"))
 
-                self.rooms[str(self.current_rooms_count)] = GameRoom(True,
-                                                                     self.current_rooms_count)
-                cur_room = self.rooms[str(self.current_rooms_count)]
-                cur_room.clients.append(client_socket)
-                cur_room.clients_names.append(name)
-                cur_room.admins.append(client_socket)
+                with self.lock:
+                    self.rooms[new_room_name] = GameRoom(True, new_room_name)
+                    cur_room = self.rooms[new_room_name]
+                    cur_room.clients.append(client_socket)
+                    cur_room.clients_names.append(name)
+                    cur_room.admins.append(client_socket)
 
-                self.start_game(str(self.current_rooms_count), client_socket, True)
+                client_socket.send(pickle.dumps(f"Ждем второго игрока..."))
+                threading.Thread(target=self.start_game, args=(cur_room,)).start()
 
                 not_in_room = False
+
             else:
                 try:
                     client_socket.send(pickle.dumps("Комната не существует или уже занята."))
                 except ConnectionError:
                     print(f"Клиент {name} внезапно разорвал соединение.")
-                    client_sock_idx = self.users.index(client_socket)
-                    self.users.pop(client_sock_idx)
                     break
 
-    def start_game(self, room, first_player, turn):
+    def start_game(self, cur_room):
         print(threading.active_count())
-        while len(self.rooms[room].clients) == 1:
-            first_player.send(pickle.dumps("Ждем второго игрока..."))
-            time.sleep(5)
+        while cur_room.is_free:
+            for client in cur_room.clients:
+                client.send(pickle.dumps(f"Ожидание соперника..."))
+            time.sleep(3)
             continue
 
-        commands_message = "Список доступных команд: exit, change, ban."
-        first_player.send(pickle.dumps(commands_message))
-        first_player_name = self.rooms[room].clients_names[self.rooms[room].clients.index(first_player)]
-        print(self.rooms[room].clients)
+        commands_message = ("Игра началась.\n"
+                            "Список доступных команд: exit, change, ban.")
+        for client in cur_room.clients:
+            client.send(pickle.dumps(commands_message))
 
-        if turn:
-            second_player = self.rooms[room].clients[1]
-            second_player_name = self.rooms[room].clients_names[self.rooms[room].clients.index(second_player)]
-            print(second_player_name)
-            second_player.send(pickle.dumps("Игра началась. Вы ходите вторым."))
-        else:
-            second_player = self.rooms[room].clients[0]
-            second_player_name = self.rooms[room].clients_names[self.rooms[room].clients.index(second_player)]
-            print(second_player_name)
-            second_player.send(pickle.dumps("Игра началась. Вы ходите первым."))
+        turn = 0
+        game_running = True
 
-        while True:
+        while game_running:
             print('Игра идет.')
-            if turn:
-                print('игрок здесь')
+            cur_player = cur_room.clients[turn]
+            cur_player_name = cur_room.clients_names[turn]
+            opponent = cur_room.clients[(turn + 1) % 2]
+            opponent_name = cur_room.clients_names[(turn + 1) % 2]
+
+            while True:
                 start_timer = time.time()
-                first_player.send(pickle.dumps("Ты ходишь."))
+                cur_player.send(pickle.dumps("Вы ходите."))
 
-                try:
-                    received_city = first_player.recv(1024)
-                    city = pickle.loads(received_city)
-                except (ConnectionError, OSError):
-                    print(f"Клиент внезапно разорвал соединение.")
-                    del self.rooms[room]
-                    Thread(target=self.change, args=(second_player, second_player_name)).start()
+                received_data = cur_player.recv(1024)
+                data = pickle.loads(received_data).strip()
+
+                if data == 'exit':
+                    self.exit(cur_room, cur_player, opponent, cur_player_name, opponent_name)
+                    game_running = False
                     break
 
-                if city == 'exit':
-                    self.exit(room, first_player, first_player_name, second_player, second_player_name)
-                    with self.rooms[room].game_condition:
-                        self.rooms[room].game_condition.notify_all()
+                elif data == 'change':
+                    del self.rooms[cur_room.name]
+                    game_running = False
+                    Thread(target=self.change, args=(cur_player, cur_player_name)).start()
+                    Thread(target=self.change, args=(opponent, opponent_name)).start()
                     break
 
-                if city == 'change':
-                    self.rooms[room].running = False
-                    with self.rooms[room].game_condition:
-                        self.rooms[room].game_condition.notify_all()
-                    del self.rooms[room]
-                    Thread(target=self.change, args=(first_player, first_player_name)).start()
-                    Thread(target=self.change, args=(second_player, second_player_name)).start()
-                    break
-
-                if city == 'ban':
-                    if first_player in self.rooms[room].admins:
-                        self.ban(room, first_player, second_player)
-                        with self.rooms[room].game_condition:
-                            self.rooms[room].game_condition.notify_all()
+                elif data == 'ban':
+                    if cur_player in cur_room.admins:
+                        self.ban(cur_room, opponent, opponent_name)
+                        game_running = False
                         break
                     else:
-                        first_player.send(pickle.dumps("Вы не можете забанить игрока, "
-                                                       "так как вы не являетесь администратором."))
+                        cur_player.send(pickle.dumps("Вы не можете забанить игрока, "
+                                                     "так как не являетесь администратором. "
+                                                     "Введите другую команду или город."))
                         continue
 
-                if city in self.rooms[room].used_words:
-                    first_player.send(pickle.dumps("Такой город уже был. Попробуйте снова.\n"))
-                    continue
+                else:
+                    city = data
 
-                if self.rooms[room].used_words:
-                    last_word = self.rooms[room].used_words[-1]
-                    if last_word[-1].lower() != city[0]:
-                        first_player.send(pickle.dumps(f"Город должен начинаться с буквы "
-                                                       f"{last_word[-1].lower()}. "
-                                                       f"Попробуйте снова."))
+                    if city in cur_room.used_words:
+                        cur_player.send(pickle.dumps("Такой город уже был. Попробуйте снова.\n"))
                         continue
 
-                end_timer = time.time()
-                if end_timer - start_timer > 15:
-                    self.end_game(second_player, first_player, room, second_player_name, first_player_name)
+                    if cur_room.used_words:
+                        last_word = cur_room.used_words[-1]
+                        if last_word[-1].lower() != city[0]:
+                            cur_player.send(pickle.dumps(f"Город должен начинаться с буквы "
+                                                         f"{last_word[-1].lower()}. "
+                                                         f"Попробуйте снова."))
+                            continue
+
+                    end_timer = time.time()
+                    if end_timer - start_timer > self.TIMER:
+                        self.end_game(opponent, cur_player, cur_room, opponent_name, cur_player_name)
+                        game_running = False
+                        break
+
+                    cur_room.used_words.append(city)
+                    opponent.send(pickle.dumps(f"{cur_player_name}: {city}"))
+                    turn = (turn + 1) % 2
                     break
 
-                self.rooms[room].used_words.append(city)
-                opponent_name = self.rooms[room].clients_names[self.rooms[room].clients.index(first_player)]
-                second_player.send(pickle.dumps(f"{opponent_name}: {city}"))
-                turn = not turn
-                with self.rooms[room].game_condition:
-                    self.rooms[room].game_condition.notify_all()
-
-            else:
-                with self.rooms[room].game_condition:
-                    first_player.send(pickle.dumps("Ожидай своей очереди."))
-                    self.rooms[room].game_condition.wait()
-                    try:
-                        first_player.send(pickle.dumps("Теперь твоя очередь."))
-                    except OSError:
-                        break
-                turn = not turn
-
     def end_game(self, winner, loser, room, winner_name, loser_name):
-        winner.send(pickle.dumps("Вы выиграли! Игра окончена. Введите команду exit для выхода."))
+        winner.send(pickle.dumps("Вы выиграли! Игра окончена. "
+                                 "Вы можете подключиться к новой игре или выйти из игры командой exit."))
         loser.send(pickle.dumps("Вы не успели ввести город и проиграли. Игра окончена. "
-                                "Введите команду exit для выхода."))
+                                "Вы можете подключиться к новой игре или выйти из игры командой exit."))
         time.sleep(1)
-        del self.rooms[room]
+        del self.rooms[room.name]
         Thread(target=self.change, args=(winner, winner_name)).start()
         Thread(target=self.change, args=(loser, loser_name)).start()
 
 
 def main():
     game_server = GameServer('127.0.0.1', port=3455)
-    game_server.launch()
+    game_server.start()
 
 
 if __name__ == "__main__":
