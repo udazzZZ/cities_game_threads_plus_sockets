@@ -45,10 +45,10 @@ class GameServer:
             Thread(target=self.recv_name, args=(client_socket,)).start()
 
     def recv_name(self, client_socket):
-        client_socket.send(pickle.dumps("Введите свое имя."))
         try:
             received_name = client_socket.recv(1024)
             name = pickle.loads(received_name)
+            print(name)
             self.change(client_socket, name)
         except ConnectionError:
             print("Клиент разорвал соединение.")
@@ -211,6 +211,7 @@ class GameServer:
 
                         cur_room.used_words.append(city)
                         opponent.send(pickle.dumps(f"{cur_player_name}: {city}"))
+                        cur_player.send(pickle.dumps(f"You: {city}"))
                         turn = (turn + 1) % 2
                         break
                 except ConnectionError:

@@ -41,36 +41,15 @@ QLineEdit {
       <property name="enabled">
        <bool>true</bool>
       </property>
-      <property name="currentIndex">
-       <number>0</number>
+      <property name="font">
+       <font>
+        <family>Terminal</family>
+       </font>
       </property>
-      <widget class="QWidget" name="page_0">
-       <widget class="QWidget" name="gridLayoutWidget">
-        <property name="geometry">
-         <rect>
-          <x>0</x>
-          <y>0</y>
-          <width>341</width>
-          <height>421</height>
-         </rect>
-        </property>
-        <layout class="QGridLayout" name="gridLayout">
-         <item row="1" column="1">
-          <widget class="QPushButton" name="send_0">
-           <property name="text">
-            <string>send</string>
-           </property>
-          </widget>
-         </item>
-         <item row="1" column="0">
-          <widget class="QLineEdit" name="input_0"/>
-         </item>
-         <item row="0" column="0" colspan="2">
-          <widget class="QTextEdit" name="output_0"/>
-         </item>
-        </layout>
-       </widget>
-      </widget>
+      <property name="currentIndex">
+       <number>1</number>
+      </property>
+      <widget class="QWidget" name="page_3"/>
       <widget class="QWidget" name="page_1">
        <widget class="QWidget" name="gridLayoutWidget_2">
         <property name="geometry">
@@ -83,10 +62,22 @@ QLineEdit {
         </property>
         <layout class="QGridLayout" name="gridLayout_2">
          <item row="1" column="0">
-          <widget class="QLineEdit" name="input_1"/>
+          <widget class="QLineEdit" name="input_1">
+           <property name="font">
+            <font>
+             <family>Segoe UI Semibold</family>
+             <bold>true</bold>
+            </font>
+           </property>
+          </widget>
          </item>
          <item row="2" column="0" colspan="2">
           <widget class="QPushButton" name="new_1">
+           <property name="font">
+            <font>
+             <family>Terminal</family>
+            </font>
+           </property>
            <property name="text">
             <string>new</string>
            </property>
@@ -94,13 +85,25 @@ QLineEdit {
          </item>
          <item row="1" column="1">
           <widget class="QPushButton" name="send_1">
+           <property name="font">
+            <font>
+             <family>Terminal</family>
+            </font>
+           </property>
            <property name="text">
             <string>send</string>
            </property>
           </widget>
          </item>
          <item row="0" column="0" colspan="2">
-          <widget class="QTextEdit" name="output_1"/>
+          <widget class="QTextEdit" name="output_1">
+           <property name="font">
+            <font>
+             <family>Segoe UI Variable Text Semibold</family>
+             <bold>true</bold>
+            </font>
+           </property>
+          </widget>
          </item>
         </layout>
        </widget>
@@ -117,17 +120,36 @@ QLineEdit {
         </property>
         <layout class="QGridLayout" name="gridLayout_4">
          <item row="1" column="0">
-          <widget class="QLineEdit" name="input_2"/>
+          <widget class="QLineEdit" name="input_2">
+           <property name="font">
+            <font>
+             <family>Segoe UI Semibold</family>
+             <bold>true</bold>
+            </font>
+           </property>
+          </widget>
          </item>
          <item row="1" column="1">
           <widget class="QPushButton" name="send_2">
+           <property name="font">
+            <font>
+             <family>Terminal</family>
+            </font>
+           </property>
            <property name="text">
             <string>send</string>
            </property>
           </widget>
          </item>
          <item row="0" column="0" colspan="2">
-          <widget class="QTextEdit" name="output_2"/>
+          <widget class="QTextEdit" name="output_2">
+           <property name="font">
+            <font>
+             <family>Segoe UI Semibold</family>
+             <bold>true</bold>
+            </font>
+           </property>
+          </widget>
          </item>
         </layout>
        </widget>
@@ -137,12 +159,17 @@ QLineEdit {
           <x>0</x>
           <y>290</y>
           <width>341</width>
-          <height>131</height>
+          <height>134</height>
          </rect>
         </property>
         <layout class="QVBoxLayout" name="verticalLayout_2">
          <item>
           <widget class="QPushButton" name="change">
+           <property name="font">
+            <font>
+             <family>Terminal</family>
+            </font>
+           </property>
            <property name="text">
             <string>change</string>
            </property>
@@ -150,6 +177,11 @@ QLineEdit {
          </item>
          <item>
           <widget class="QPushButton" name="ban">
+           <property name="font">
+            <font>
+             <family>Terminal</family>
+            </font>
+           </property>
            <property name="text">
             <string>ban</string>
            </property>
@@ -157,6 +189,11 @@ QLineEdit {
          </item>
          <item>
           <widget class="QPushButton" name="exit">
+           <property name="font">
+            <font>
+             <family>Terminal</family>
+            </font>
+           </property>
            <property name="text">
             <string>exit</string>
            </property>
