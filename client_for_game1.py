@@ -2,13 +2,17 @@ import threading
 import pickle
 from PyQt6.QtCore import pyqtSignal, QObject, pyqtSlot
 from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QLineEdit, QPushButton
-from gui_for_game import Ui_MainWindow
+from game_window import Ui_MainWindow
+from choose_room_window import Ui_RoomWindow
+from registration import Ui_Registration
 import socket
 from queue import Queue
 
 
 class Communication(QObject):
     message_received = pyqtSignal(str)
+    free_rooms_updater = pyqtSignal(list)
+    start_game = pyqtSignal(str)
 
 
 class GameClient(QObject):
@@ -21,9 +25,8 @@ class GameClient(QObject):
         self.queue = Queue()
         self.comm = comm
 
-    def start(self):
-        threading.Thread(target=self.receive_messages).start()
-        threading.Thread(target=self.send_msg).start()
+        threading.Thread(target=self.receive_messages, daemon=True).start()
+        threading.Thread(target=self.send_msg, daemon=True).start()
 
     def send_msg(self):
         while self.isConnected:
@@ -36,23 +39,28 @@ class GameClient(QObject):
                 self.sock.close()
                 break
 
-    def send_message(self, message):
-        self.queue.put(pickle.dumps(message), block=False)
+    def send_message(self, packet):
+        self.queue.put(pickle.dumps(packet), block=False)
 
     def receive_messages(self):
         while self.isConnected:
             try:
-                received_data = self.sock.recv(4096)
-                if not received_data:
+                data_in_bytes = self.sock.recv(4096)
+                if not data_in_bytes:
+                    print(data_in_bytes)
                     break
-                message = pickle.loads(received_data)
-                if isinstance(message, dict) and 'exit' in message and message['exit']:
-                    self.comm.message_received.emit("Отключение от сервера...")
-                    self.isConnected = False
-                    self.sock.close()
-                    break
+                data = pickle.loads(data_in_bytes)
+                print(data)
 
-                self.comm.message_received.emit(message)
+                match data['msgtype']:
+                    case 'chat':
+                        self.comm.message_received.emit(data['data'])
+                    case 'free_rooms':
+                        self.comm.free_rooms_updater.emit(data['data'])
+                    case 'ban':
+                        pass
+                    case 'start_game':
+                        self.comm.start_game.emit(data['data'])
 
             except (ConnectionError, OSError):
                 print("Вы были отключены от сервера.")
@@ -60,108 +68,120 @@ class GameClient(QObject):
                 self.sock.close()
                 break
 
-class StartWidget(QWidget):
+class Registration(QMainWindow, Ui_Registration):
     def __init__(self):
         super().__init__()
-        self.game_room_with_chat = None
+        self.room = None
+        self.setupUi(self)
         self.comm = Communication()
         self.client = GameClient('127.0.0.1', 3435, self.comm)
-        self.client.start()
 
-        self.setGeometry(300, 300, 0, 0)
-        #
-        layout = QVBoxLayout()
-        self.input_room = QLineEdit()
-        self.input_room.setPlaceholderText("Введите свое имя...")
-        send = QPushButton('send')
-        layout.addWidget(self.input_room)
-        layout.addWidget(send)
-        self.setLayout(layout)
-        #
-        send.clicked.connect(self.send)
+        self.reg_input.setPlaceholderText("Введите свое имя...")
+        self.setWindowTitle("Регистрация игрока")
+
+        self.send_name_button.clicked.connect(self.send)
         self.show()
 
     @pyqtSlot()
     def send(self):
-        name = self.input_room.text()
-        self.client.send_message(name)
-        self.input_room.clear()
+        name = self.reg_input.text()
+        self.client.send_message(dict(data=name,
+                                      msgtype='name'))
+        self.reg_input.clear()
         self.hide()
 
-        self.game_room_with_chat = MainWindow(self, self.client, name)
-        self.game_room_with_chat.setFixedSize(363, 482)
+        self.room = Room(self, name, self.comm, self.client)
+        # self.room.setFixedSize(363, 482)
+
+class Room(QMainWindow, Ui_RoomWindow):
+    def __init__(self, reg_window, name: str, comm: Communication, client):
+        super().__init__()
+        self.name = name
+        self.comm = comm
+        self.client = client
+        self.reg_window = reg_window
+        self.game = None
+        self.setupUi(self)
+        self.setWindowTitle(name)
+        self.list_of_rooms.addItems(['Room1', 'Room2', 'Room3'])
+        self.room = ''
+        self.show()
+        self.button_send.clicked.connect(self.game_start)
+        self.comm.free_rooms_updater.connect(self.update_rooms)
+
+    def game_start(self):
+        self.room = self.list_of_rooms.currentText()
+        self.client.send_message(dict(data=self.room,
+                                      msgtype='room'))
+        self.hide()
+        self.game = MainWindow(self.reg_window, self, self.comm, self.client, self.name, self.room)
+
+    def update_rooms(self, rooms):
+        self.list_of_rooms.clear()
+        self.list_of_rooms.addItems(rooms)
 
 class MainWindow(QMainWindow, Ui_MainWindow):
-    def __init__(self, start_window, client, name):
+    def __init__(self, reg_window, choose_room_window, comm, client, name, room):
         super().__init__()
-        self.start_window = start_window
+        self.reg_window = reg_window
+        self.choose_room_window = choose_room_window
         self.client = client
         self.client_name = name
+        self.comm = comm
+        self.room = room
         self.setupUi(self)
 
-        self.setWindowTitle(name)
+        self.send.setEnabled(False)
+        self.ban_button.setEnabled(False)
 
-        self.stackedWidget.setCurrentIndex(1)
+        self.setWindowTitle(self.room)
 
-        self.client.comm.message_received.connect(self.display_message)
-        self.input_1.editingFinished.connect(self.send_room)
-        self.input_2.editingFinished.connect(self.send_chat_message)
-        self.send_1.clicked.connect(self.send_room)
-        self.new_1.clicked.connect(self.create_room)
-        self.send_2.clicked.connect(self.send_chat_message)
-        self.change.clicked.connect(self.change_room)
-        self.exit.clicked.connect(self.exit_app)
-        self.ban.clicked.connect(self.ban_player)
+        self.comm.message_received.connect(self.chat_update)
+        self.comm.start_game.connect(self.start_game)
+
+        self.send.clicked.connect(self.send_chat_message)
+        self.change_button.clicked.connect(self.change_room)
+        self.exit_button.clicked.connect(self.exit_app)
+        self.ban_button.clicked.connect(self.ban_player)
 
         self.show()
 
-    @pyqtSlot()
-    def send_room(self):
-        room_name = self.input_1.text()
-        if room_name:
-            self.client.send_message(room_name)
-            self.input_1.clear()
-            self.stackedWidget.setCurrentIndex(2)
-
-    @pyqtSlot()
-    def create_room(self):
-        self.client.send_message("new")
-        room_name = self.input_1.text()
-        if room_name:
-            self.client.send_message(room_name)
-            self.input_1.clear()
-            self.stackedWidget.setCurrentIndex(2)
+    @pyqtSlot(str)
+    def start_game(self, data):
+        self.output.append(data)
+        self.send.setEnabled(True)
+        self.ban_button.setEnabled(True)
 
     @pyqtSlot()
     def send_chat_message(self):
-        message = self.input_2.text()
+        message = self.input.text()
         if message:
-            self.client.send_message(message)
-            self.input_2.clear()
+            self.client.send_message(dict(data=message,
+                                          msgtype='city'))
+            self.input.clear()
 
     @pyqtSlot()
     def change_room(self):
-        self.client.send_message("change")
-        self.stackedWidget.setCurrentIndex(1)
+        self.client.send_message(dict(data='',
+                                      msgtype='change'))
+        self.close()
+        self.choose_room_window.show()
 
     @pyqtSlot()
     def exit_app(self):
-        self.client.send_message("exit")
+        self.client.send_message(dict(data='',
+                                      msgtype='exit'))
         self.close()
+        self.client.sock.close()
 
     @pyqtSlot()
     def ban_player(self):
-        self.client.send_message("ban")
+        self.client.send_message(dict(data='',
+                                      msgtype='ban'))
 
     @pyqtSlot(str)
-    def display_message(self, message):
-        print(message)
-        current_page_index = self.stackedWidget.currentIndex()
-
-        if current_page_index == 1:
-            self.output_1.append(message)
-        elif current_page_index == 2:
-            self.output_2.append(message)
+    def chat_update(self, message):
+        self.output.append(message)
 
     @pyqtSlot()
     def closeEvent(self, event):
@@ -173,7 +193,7 @@ def main():
     host = '127.0.0.1'
     port = 3435
 
-    start_window = StartWidget()
+    start_window = Registration()
     start_window.show()
 
     app.exec()
