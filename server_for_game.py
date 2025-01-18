@@ -10,7 +10,6 @@ class GameRoom:
         self.clients: list = []
         self.used_words: list = []
         self.clients_names: list = []
-        self.lock: Lock = Lock()
         self.turn = 0
         self.is_active = False
 
@@ -31,15 +30,24 @@ class GameRoom:
 
     def exit_room(self, client, client_name, reason=None):
         self.broadcast(dict(data=f"Игрок {client_name} покинул игру.",
-                            msgtype='chat'))
-        if len(self.clients) < 2:
+                            msgtype='chat'),
+                       client)
+        client_idx = self.clients.index(client)
+        self.clients.pop(client_idx)
+        self.clients_names.pop(client_idx)
+        self.used_words = []
+        self.is_free = True
+        print(self.is_free)
+        if len(self.clients) == 1:
             self.end_game(client)
 
     def end_game(self, loser):
         self.broadcast(dict(data="Вы выиграли! Игра окончена. "
-                                 "Вы можете подключиться к новой игре.",
+                                 "Вы можете подключиться к новой игре "
+                                 "или дождаться подключения нового клиента.",
                             msgtype='chat'),
                        loser)
+        self.is_active = False
 
 
 class GameServer:
@@ -115,6 +123,7 @@ class ClientHandler(Thread):
                     case 'ban':
                         pass
                     case 'change':
+                        print('Смена комнаты')
                         self.room.exit_room(self.client, self.name)
                     case 'exit':
                         self.exit_game(self.room, self.client, self.name)
@@ -133,10 +142,8 @@ class ClientHandler(Thread):
 
         return free_rooms
 
-    @staticmethod
-    def exit_game(room, player, name):
-        packet = dict(data=f"Игрок {name} покинул игру. "
-                           f"Вы будете перенаправлены в меню смены комнаты.",
+    def exit_game(self, room, player, name):
+        packet = dict(data=f"Игрок {name} покинул игру. ",
                       msgtype='chat')
         room.broadcast(packet, player)
         print(f"{name} disconnected")
@@ -144,28 +151,28 @@ class ClientHandler(Thread):
         room.clients.pop(cur_player_idx)
         room.clients_names.pop(cur_player_idx)
         room.is_free = True
+        room.used_words = []
+        room.end_game(player)
+        self.client.send(pickle.dumps(dict(data='',
+                                           msgtype='end_game')))
 
     def ban(self, room, opponent, opponent_name):
-        packet = dict(data="Вы были забанены.",
-                      msgtype='ban')
-        opponent.send(pickle.dumps(packet))
-        opponent_idx = room.clients.index(opponent)
-        room.clients.pop(opponent_idx)
-        room.clients_names.pop(opponent_idx)
-        room.used_words = []
-        room.is_free = True
-        Thread(target=self.start_game, args=(room, )).start()
+        pass
 
     def join_room(self, room_name):
         for room in self.rooms:
-            if room.name == room_name:
+            print(room.is_free)
+            if room.name == room_name and room.is_free:
                 self.room = room
                 room.clients.append(self.client)
                 room.clients_names.append(self.name)
-                print(f"{self.name} joined the room {room.name}.")
-
-    def start_game(self, cur_room):
-        pass
+                room.broadcast(dict(data=f'Игрок {self.name} присоединился к комнате.',
+                                    msgtype='chat'),
+                               self.client)
+                break
+        else:
+            self.client.send(pickle.dumps(dict(data='',
+                                               msgtype='room_not_free')))
 
     def is_city_valid(self, city):
         if city in self.room.used_words:
@@ -188,7 +195,7 @@ class ClientHandler(Thread):
 
 
 def main():
-    game_server = GameServer('127.0.0.1', port=3435)
+    game_server = GameServer('127.0.0.1', port=3434)
     game_server.start()
 
 

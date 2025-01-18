@@ -1,7 +1,7 @@
 import threading
 import pickle
 from PyQt6.QtCore import pyqtSignal, QObject, pyqtSlot
-from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QLineEdit, QPushButton
+from PyQt6.QtWidgets import QApplication, QMainWindow
 from game_window import Ui_MainWindow
 from choose_room_window import Ui_RoomWindow
 from registration import Ui_Registration
@@ -13,6 +13,7 @@ class Communication(QObject):
     message_received = pyqtSignal(str)
     free_rooms_updater = pyqtSignal(list)
     start_game = pyqtSignal(str)
+    end_game = pyqtSignal()
 
 
 class GameClient(QObject):
@@ -61,6 +62,10 @@ class GameClient(QObject):
                         pass
                     case 'start_game':
                         self.comm.start_game.emit(data['data'])
+                    case 'room_not_free':
+                        print('комната какого-то хуя не свободна')
+                    case 'end_game':
+                        self.comm.end_game.emit()
 
             except (ConnectionError, OSError):
                 print("Вы были отключены от сервера.")
@@ -74,7 +79,7 @@ class Registration(QMainWindow, Ui_Registration):
         self.room = None
         self.setupUi(self)
         self.comm = Communication()
-        self.client = GameClient('127.0.0.1', 3435, self.comm)
+        self.client = GameClient('127.0.0.1', 3434, self.comm)
 
         self.reg_input.setPlaceholderText("Введите свое имя...")
         self.setWindowTitle("Регистрация игрока")
@@ -91,7 +96,6 @@ class Registration(QMainWindow, Ui_Registration):
         self.hide()
 
         self.room = Room(self, name, self.comm, self.client)
-        # self.room.setFixedSize(363, 482)
 
 class Room(QMainWindow, Ui_RoomWindow):
     def __init__(self, reg_window, name: str, comm: Communication, client):
@@ -138,6 +142,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.comm.message_received.connect(self.chat_update)
         self.comm.start_game.connect(self.start_game)
+        self.comm.end_game.connect(self.end_game)
 
         self.send.clicked.connect(self.send_chat_message)
         self.change_button.clicked.connect(self.change_room)
@@ -164,15 +169,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def change_room(self):
         self.client.send_message(dict(data='',
                                       msgtype='change'))
-        self.close()
+        self.output.clear()
+        self.hide()
         self.choose_room_window.show()
 
     @pyqtSlot()
     def exit_app(self):
         self.client.send_message(dict(data='',
                                       msgtype='exit'))
+
+    @pyqtSlot()
+    def end_game(self):
         self.close()
-        self.client.sock.close()
 
     @pyqtSlot()
     def ban_player(self):
@@ -181,17 +189,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
     @pyqtSlot(str)
     def chat_update(self, message):
+        print(message)
         self.output.append(message)
 
     @pyqtSlot()
     def closeEvent(self, event):
-        self.client.sock.close()
+        self.exit_app()
 
 def main():
     app = QApplication([])
-
-    host = '127.0.0.1'
-    port = 3435
 
     start_window = Registration()
     start_window.show()
