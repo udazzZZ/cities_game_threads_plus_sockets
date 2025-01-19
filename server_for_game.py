@@ -11,7 +11,6 @@ class GameRoom:
         self.used_words: list = []
         self.clients_names: list = []
         self.turn = 0
-        self.is_active = False
 
     def broadcast(self, packet, except_client=None):
         for client in self.clients:
@@ -50,7 +49,6 @@ class GameRoom:
                                  "или дождаться подключения нового клиента.",
                             msgtype='chat'),
                        loser)
-        self.is_active = False
 
 
 class GameServer:
@@ -64,7 +62,6 @@ class GameServer:
                       GameRoom(True, 'Room2'),
                       GameRoom(True, 'Room3')]
         self.package_template = {'data': '', 'msgtype': ''}
-        self.TIMER: int = 15
 
     def start(self):
         print("Ожидание подключения игроков...")
@@ -113,7 +110,6 @@ class ClientHandler(Thread):
                         self.room.ready_clients_count += 1
                         if self.room.ready_clients_count == 2:
                             self.room.is_free = False
-                            self.room.is_active = True
                             self.room.start_game()
                             print('Начинаем игру')
                             self.room.clients[self.room.turn].send(pickle.dumps(dict(data='Ваша очередь ходить.',
@@ -147,7 +143,7 @@ class ClientHandler(Thread):
     def change_turn(self):
         self.room.turn = (self.room.turn + 1) % 2
         self.room.clients[self.room.turn].send(pickle.dumps(dict(data='Ваша очередь ходить.',
-                                                       msgtype='your_turn')))
+                                                                 msgtype='your_turn')))
 
     def get_free_rooms(self):
         free_rooms = []
@@ -173,9 +169,6 @@ class ClientHandler(Thread):
         room.end_game(player)
         self.client.send(pickle.dumps(dict(data='',
                                            msgtype='end_game')))
-
-    def ban(self, room, opponent, opponent_name):
-        pass
 
     def join_room(self, room_name):
         for room in self.rooms:
