@@ -2,10 +2,6 @@ import socket
 from threading import Thread
 import pickle
 
-# TODO:
-# BAN COMMAND + TIMER
-
-
 class GameRoom:
     def __init__(self, free, name):
         self.is_free: bool = free
@@ -27,9 +23,6 @@ class GameRoom:
                             msgtype='start_game'))
 
     def exit_room(self, client, client_name, reason=None):
-        self.broadcast(dict(data=f"Игрок {client_name} покинул игру.",
-                            msgtype='chat'),
-                       client)
         client_idx = self.clients.index(client)
         self.clients.pop(client_idx)
         self.clients_names.pop(client_idx)
@@ -37,6 +30,16 @@ class GameRoom:
         self.is_free = True
         self.ready_clients_count -= 1
         self.turn = 0
+        if reason == 'ban':
+            self.broadcast(dict(data=f"Игрок {client_name} был забанен.",
+                                msgtype='chat'),
+                           client)
+            client.send(pickle.dumps(dict(data='Вы были забанены.',
+                                          msgtype='banned')))
+        else:
+            self.broadcast(dict(data=f"Игрок {client_name} покинул игру.",
+                                msgtype='chat'),
+                           client)
         print(self.is_free)
         if len(self.clients) == 1:
             self.end_game(client)
@@ -126,7 +129,12 @@ class ClientHandler(Thread):
                                                 self.client)
                             self.change_turn()
                     case 'ban':
-                        pass
+                        client_idx = self.room.clients.index(self.client)
+                        opponent_idx = (client_idx + 1) % 2
+                        opponent = self.room.clients[opponent_idx]
+                        opponent_name = self.room.clients_names[opponent_idx]
+                        self.room.exit_room(opponent, opponent_name, 'ban')
+                        print('banned')
                     case 'change':
                         print('Смена комнаты')
                         self.room.exit_room(self.client, self.name)

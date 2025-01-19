@@ -6,6 +6,7 @@ from game_window import Ui_MainWindow
 from choose_room_window import Ui_RoomWindow
 from registration import Ui_Registration
 from room_is_not_free_window import Ui_RoomIsNotFree
+from banned_window import Ui_BannedWindow
 import socket
 from queue import Queue
 
@@ -19,6 +20,7 @@ class Communication(QObject):
     room_not_free = pyqtSignal()
     your_turn = pyqtSignal(str)
     try_again = pyqtSignal(str)
+    banned = pyqtSignal(str)
 
 
 class GameClient(QObject):
@@ -63,8 +65,8 @@ class GameClient(QObject):
                         self.comm.message_received.emit(data['data'])
                     case 'free_rooms':
                         self.comm.free_rooms_updater.emit(data['data'])
-                    case 'ban':
-                        pass
+                    case 'banned':
+                        self.comm.banned.emit(data['data'])
                     case 'start_game':
                         self.comm.start_game.emit(data['data'])
                     case 'room_free':
@@ -169,6 +171,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.client_name = name
         self.comm = comm
         self.room = room
+        self.ban_window = None
         self.setupUi(self)
 
         self.send.setEnabled(False)
@@ -181,6 +184,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.comm.end_game.connect(self.end_game)
         self.comm.your_turn.connect(self.make_move)
         self.comm.try_again.connect(self.try_again)
+        self.comm.banned.connect(self.player_is_banned)
 
         self.send.clicked.connect(self.send_chat_message)
         self.change_button.clicked.connect(self.change_room)
@@ -227,6 +231,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.hide()
         self.choose_room_window.show()
 
+    @pyqtSlot(str)
+    def player_is_banned(self):
+        self.hide()
+        self.ban_window = BannedWindow()
+
     def exit_app(self):
         self.client.send_message(dict(data='',
                                       msgtype='exit'))
@@ -247,6 +256,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     @pyqtSlot()
     def closeEvent(self, event):
         self.exit_app()
+
+class BannedWindow(QMainWindow, Ui_BannedWindow):
+    def __init__(self):
+        super().__init__()
+        self.setupUi(self)
+
+        self.button_send.clicked.connect(self.exit)
+
+        self.show()
+
+    def exit(self):
+        self.close()
 
 def main():
     app = QApplication([])
