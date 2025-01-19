@@ -1,6 +1,9 @@
 import socket
-from threading import Thread, Condition, Lock
+from threading import Thread
 import pickle
+
+# TODO:
+# BAN COMMAND + TIMER
 
 
 class GameRoom:
@@ -8,13 +11,11 @@ class GameRoom:
         self.is_free: bool = free
         self.name: str = name
         self.clients: list = []
+        self.ready_clients_count = 0
         self.used_words: list = []
         self.clients_names: list = []
         self.turn = 0
         self.is_active = False
-
-    def get_clients_names(self):
-        return ' '.join([i for i in self.clients_names])
 
     def broadcast(self, packet, except_client=None):
         for client in self.clients:
@@ -22,11 +23,8 @@ class GameRoom:
                 client.send(pickle.dumps(packet))
 
     def start_game(self):
-        if self.is_active:
-            self.broadcast(dict(data="Игра началась.",
-                                msgtype='start_game'))
-        self.clients[0].send(pickle.dumps(dict(data='',
-                                               msgtype='start_game')))
+        self.broadcast(dict(data="Игра началась.",
+                            msgtype='start_game'))
 
     def exit_room(self, client, client_name, reason=None):
         self.broadcast(dict(data=f"Игрок {client_name} покинул игру.",
@@ -37,6 +35,8 @@ class GameRoom:
         self.clients_names.pop(client_idx)
         self.used_words = []
         self.is_free = True
+        self.ready_clients_count -= 1
+        self.turn = 0
         print(self.is_free)
         if len(self.clients) == 1:
             self.end_game(client)
@@ -57,9 +57,9 @@ class GameServer:
         self.socket.listen(5)
         self.is_server_active: bool = True
         self.current_rooms_count: int = 0
-        self.rooms = {GameRoom(True, 'Room1'),
+        self.rooms = [GameRoom(True, 'Room1'),
                       GameRoom(True, 'Room2'),
-                      GameRoom(True, 'Room3')}
+                      GameRoom(True, 'Room3')]
         self.package_template = {'data': '', 'msgtype': ''}
         self.TIMER: int = 15
 
@@ -75,7 +75,7 @@ class ClientHandler(Thread):
         super().__init__()
         self.client = client
         self.rooms = rooms
-        self.room = None
+        self.room: GameRoom | None = None
         self.name = ''
 
         self.start()
@@ -100,17 +100,21 @@ class ClientHandler(Thread):
                         free_rooms_names = []
                         for room in free_rooms:
                             free_rooms_names.append(room.name)
+                        print(free_rooms_names)
                         self.client.send(pickle.dumps(dict(data=free_rooms_names,
                                                            msgtype='free_rooms')))
                     case 'room':
                         print(f'Комната получена')
                         self.join_room(data['data'])
-
-                        if len(self.room.clients) == 2:
+                    case 'ready':
+                        self.room.ready_clients_count += 1
+                        if self.room.ready_clients_count == 2:
                             self.room.is_free = False
                             self.room.is_active = True
                             self.room.start_game()
                             print('Начинаем игру')
+                            self.room.clients[self.room.turn].send(pickle.dumps(dict(data='Ваша очередь ходить.',
+                                                                                     msgtype='your_turn')))
                     case 'city':
                         city = data['data'].strip().lower()
                         if self.is_city_valid(city):
@@ -120,6 +124,7 @@ class ClientHandler(Thread):
                             self.room.broadcast(dict(data=f"{self.name}: {city}",
                                                      msgtype='chat'),
                                                 self.client)
+                            self.change_turn()
                     case 'ban':
                         pass
                     case 'change':
@@ -127,11 +132,14 @@ class ClientHandler(Thread):
                         self.room.exit_room(self.client, self.name)
                     case 'exit':
                         self.exit_game(self.room, self.client, self.name)
-                    case 'time_out':
-                        self.room.remove_client(self, 'time_out')
             except (ConnectionError, OSError):
                 print("Игрок отключился.")
                 break
+
+    def change_turn(self):
+        self.room.turn = (self.room.turn + 1) % 2
+        self.room.clients[self.room.turn].send(pickle.dumps(dict(data='Ваша очередь ходить.',
+                                                       msgtype='your_turn')))
 
     def get_free_rooms(self):
         free_rooms = []
@@ -152,6 +160,8 @@ class ClientHandler(Thread):
         room.clients_names.pop(cur_player_idx)
         room.is_free = True
         room.used_words = []
+        room.ready_clients_count -= 1
+        room.turn = 0
         room.end_game(player)
         self.client.send(pickle.dumps(dict(data='',
                                            msgtype='end_game')))
@@ -163,12 +173,15 @@ class ClientHandler(Thread):
         for room in self.rooms:
             print(room.is_free)
             if room.name == room_name and room.is_free:
+                print('Игрок подключился к комнате')
                 self.room = room
                 room.clients.append(self.client)
                 room.clients_names.append(self.name)
                 room.broadcast(dict(data=f'Игрок {self.name} присоединился к комнате.',
                                     msgtype='chat'),
                                self.client)
+                self.client.send(pickle.dumps(dict(data='',
+                                                   msgtype='room_free')))
                 break
         else:
             self.client.send(pickle.dumps(dict(data='',
@@ -177,7 +190,7 @@ class ClientHandler(Thread):
     def is_city_valid(self, city):
         if city in self.room.used_words:
             packet = dict(data="Такой город уже был. Попробуйте снова.\n",
-                          msgtype='chat')
+                          msgtype='try_again')
             self.client.send(pickle.dumps(packet))
             return False
 
@@ -187,7 +200,7 @@ class ClientHandler(Thread):
                 packet = dict(data=f"Город должен начинаться с буквы "
                                    f"{last_word[-1].lower()}. "
                                    f"Попробуйте снова.",
-                              msgtype='chat')
+                              msgtype='try_again')
                 self.client.send(pickle.dumps(packet))
                 return False
 
