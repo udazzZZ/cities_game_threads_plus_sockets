@@ -64,7 +64,6 @@ class GameServer:
                       GameRoom(True, 'Room2'),
                       GameRoom(True, 'Room3')]
         self.package_template = {'data': '', 'msgtype': ''}
-        self.TIMER: int = 15
 
     def start(self):
         print("Ожидание подключения игроков...")
@@ -147,7 +146,7 @@ class ClientHandler(Thread):
     def change_turn(self):
         self.room.turn = (self.room.turn + 1) % 2
         self.room.clients[self.room.turn].send(pickle.dumps(dict(data='Ваша очередь ходить.',
-                                                       msgtype='your_turn')))
+                                                                 msgtype='your_turn')))
 
     def get_free_rooms(self):
         free_rooms = []
@@ -173,9 +172,6 @@ class ClientHandler(Thread):
         room.end_game(player)
         self.client.send(pickle.dumps(dict(data='',
                                            msgtype='end_game')))
-
-    def ban(self, room, opponent, opponent_name):
-        pass
 
     def join_room(self, room_name):
         for room in self.rooms:
