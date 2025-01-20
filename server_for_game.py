@@ -57,7 +57,6 @@ class GameServer:
         self.socket.bind((host, port))
         self.socket.listen(5)
         self.is_server_active: bool = True
-        self.current_rooms_count: int = 0
         self.rooms = [GameRoom(True, 'Room1'),
                       GameRoom(True, 'Room2'),
                       GameRoom(True, 'Room3')]
@@ -68,7 +67,7 @@ class GameServer:
         while self.is_server_active:
             client_socket, client_address = self.socket.accept()
             print(f'Подключен {client_address}')
-            client_handler_thread = ClientHandler(client_socket, self.rooms)
+            ClientHandler(client_socket, self.rooms)
 
 class ClientHandler(Thread):
     def __init__(self, client, rooms):
@@ -103,9 +102,11 @@ class ClientHandler(Thread):
                         print(free_rooms_names)
                         self.client.send(pickle.dumps(dict(data=free_rooms_names,
                                                            msgtype='free_rooms')))
+
                     case 'room':
                         print(f'Комната получена')
                         self.join_room(data['data'])
+
                     case 'ready':
                         self.room.ready_clients_count += 1
                         if self.room.ready_clients_count == 2:
@@ -124,6 +125,7 @@ class ClientHandler(Thread):
                                                      msgtype='chat'),
                                                 self.client)
                             self.change_turn()
+
                     case 'ban':
                         client_idx = self.room.clients.index(self.client)
                         opponent_idx = (client_idx + 1) % 2
@@ -131,11 +133,14 @@ class ClientHandler(Thread):
                         opponent_name = self.room.clients_names[opponent_idx]
                         self.room.exit_room(opponent, opponent_name, 'ban')
                         print('banned')
+
                     case 'change':
                         print('Смена комнаты')
                         self.room.exit_room(self.client, self.name)
+
                     case 'exit':
                         self.exit_game(self.room, self.client, self.name)
+
             except (ConnectionError, OSError):
                 print("Игрок отключился.")
                 break
