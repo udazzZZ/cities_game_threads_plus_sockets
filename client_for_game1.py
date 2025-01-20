@@ -54,9 +54,10 @@ class GameClient(QObject):
         while self.isConnected:
             try:
                 data_in_bytes = self.sock.recv(4096)
+
                 if not data_in_bytes:
-                    print(data_in_bytes)
                     break
+
                 data = pickle.loads(data_in_bytes)
                 print(data)
 
@@ -102,7 +103,6 @@ class Registration(QMainWindow, Ui_Registration):
         self.comm.free_rooms_updater.connect(self.get_rooms)
         self.show()
 
-    @pyqtSlot()
     def send(self):
         name = self.reg_input.text()
         self.name = name
